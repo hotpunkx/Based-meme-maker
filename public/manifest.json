@@ -16,12 +16,12 @@
   ],
   "developer": {
     "name": "Hotpunk",
-    "url": "https://basedmememaker.vercel.app"
+    "url": "https://basedmeme.vercel.app/"
   },
   "webapp": {
-    "url": "https://basedmememaker.vercel.app",
+    "url": "https://basedmeme.vercel.app/",
     "allowed_origins": [
-      "https://basedmememaker.vercel.app"
+      "https://basedmeme.vercel.app/"
     ]
   }
 }
