@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,93 +10,41 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 220 13% 13%;
+    --background: 222.2 84% 4.9%;
+    /* Slate-950 like */
+    --foreground: 210 40% 98%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 13% 13%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 13%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 218 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
 
-    --secondary: 210 20% 95%;
-    --secondary-foreground: 220 13% 13%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
 
-    --muted: 210 20% 95%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
 
-    --accent: 226 76% 45%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 218 100% 50%;
-
-    --radius: 0.75rem;
-    
-    --gradient-primary: linear-gradient(90deg, hsl(218, 100%, 50%), hsl(226, 76%, 45%));
-
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
   }
 
+  /* Force dark mode colors by default since the design is dark */
   .dark {
-    --background: 220 15% 9%;
-    --foreground: 210 20% 98%;
-
-    --card: 220 13% 13%;
-    --card-foreground: 210 20% 98%;
-
-    --popover: 220 13% 13%;
-    --popover-foreground: 210 20% 98%;
-
-    --primary: 218 100% 50%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 220 13% 18%;
-    --secondary-foreground: 210 20% 98%;
-
-    --muted: 220 13% 18%;
-    --muted-foreground: 220 9% 65%;
-
-    --accent: 226 76% 45%;
-    --accent-foreground: 0 0% 100%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-
-    --border: 220 13% 18%;
-    --input: 220 13% 18%;
-    --ring: 218 100% 50%;
-    
-    --gradient-primary: linear-gradient(90deg, hsl(218, 100%, 50%), hsl(226, 76%, 45%));
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    /* ... keep existing or mapping to the new design ... */
   }
 }
 
@@ -104,6 +54,131 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-slate-950 text-white font-['Inter'];
+    background-image: url('/bg-mobile.jpg');
+    /* Optimized for mobile */
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
   }
+
+  /* Optional: Use high-res BG for desktop */
+  @media (min-width: 1024px) {
+    body {
+      background-image: url('/bg.png');
+    }
+  }
+}
+
+/* Custom Animations from User Request */
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-15px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.antigravity-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+
+/* Uiverse Button Styles - Adapted for Antigravity */
+.animated-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 36px;
+  border: 4px solid;
+  border-color: transparent;
+  font-size: 16px;
+  background-color: inherit;
+  border-radius: 100px;
+  font-weight: 600;
+  color: #fff;
+  /* text-white */
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.6s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.animated-button svg {
+  position: absolute;
+  width: 24px;
+  fill: #fff;
+  /* Fill as per path */
+  z-index: 9;
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.animated-button .arr-1 {
+  right: 16px;
+}
+
+.animated-button .arr-2 {
+  left: -25%;
+}
+
+.animated-button .circle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background-color: #3b82f6;
+  /* blue-500 */
+  border-radius: 50%;
+  opacity: 0;
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.animated-button .text {
+  position: relative;
+  z-index: 1;
+  transform: translateX(-12px);
+  transition: all 0.8s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.animated-button:hover {
+  box-shadow: 0 0 0 12px transparent;
+  color: #fff;
+  border-radius: 12px;
+}
+
+.animated-button:hover .arr-1 {
+  right: -25%;
+}
+
+.animated-button:hover .arr-2 {
+  left: 16px;
+}
+
+.animated-button:hover .text {
+  transform: translateX(12px);
+}
+
+.animated-button:hover svg {
+  fill: #fff;
+}
+
+.animated-button:active {
+  scale: 0.95;
+  box-shadow: 0 0 0 4px #3b82f6;
+  /* blue-500 */
+}
+
+.animated-button:hover .circle {
+  width: 220px;
+  height: 220px;
+  opacity: 1;
 }

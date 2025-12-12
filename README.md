@@ -1,73 +1,87 @@
-# Welcome to your Lovable project
+# Antigravity Meme Maker 🔵
 
-## Project info
+![Meme Maker Banner](public/og.png)
 
-**URL**: https://lovable.dev/projects/0044943f-a156-4ac1-82e5-9dfa565b264e
+A fully on-chain meme generator built on **Base**. Create memes, store them permanently on IPFS, and mint them as NFTs.
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- **🎨 Canvas Editor**: Add text, stickers, drag-and-drop images, and draw freely.
+- **💾 IPFS Storage**: Memes are automatically uploaded to decentralized storage (via Pinata).
+- **🔗 Smart Contract Minting**: Mint your creation directly to the **Base** blockchain (`MemeNFT` contract).
+- **🕸️ Shareable Links**: Generate instant links to share your meme with friends (`/share?id=<CID>`).
+- **🔵 Share to Base**: One-click sharing to **Warpcast** (Farcaster) with embedded deep links.
+- **📱 Wallet Connect**: Integrated with **RainbowKit** and **Wagmi** for seamless wallet connection.
 
-**Use Lovable**
+## Tech Stack
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/0044943f-a156-4ac1-82e5-9dfa565b264e) and start prompting.
+- **Frontend**: React, Vite, TypeScript, TailwindCSS, Shadcn/UI
+- **Web3**: Wagmi, Viem, RainbowKit, Ethers.js
+- **Storage**: Pinata (IPFS)
+- **Smart Contract**: Solidity, Hardhat, Base Mainnet/Sepolia
 
-Changes made via Lovable will be committed automatically to this repo.
+## Prerequisites
 
-**Use your preferred IDE**
+1.  **Node.js** (v18+)
+2.  **Pinata Account**: Get your API keys at [pinata.cloud](https://pinata.cloud).
+3.  **Wallet**: Coinbase Wallet, MetaMask, or any EVM wallet.
+4.  **Base ETH**: You need a small amount of ETH on Base Mainnet (or Sepolia for testing) for gas.
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Setup
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-repo/based-meme-maker.git
+    cd based-meme-maker
+    ```
 
-Follow these steps:
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+3.  **Configure Environment:**
+    Create a `.env` file in the root directory:
+    ```env
+    VITE_PINATA_API_KEY=your_pinata_api_key
+    VITE_PINATA_SECRET_KEY=your_pinata_secret_key
+    PRIVATE_KEY=your_wallet_private_key_for_deployment
+    ```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+4.  **Run Locally:**
+    ```bash
+    npm run dev
+    ```
+    Open [http://localhost:8080](http://localhost:8080) to view it in the browser.
 
-# Step 3: Install the necessary dependencies.
-npm i
+## Deployment
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+### Smart Contract
+
+This project uses a standalone deployment script for Base.
+
+1.  Ensure your `.env` has a `PRIVATE_KEY` with gas funds.
+2.  Run the deploy script:
+    ```bash
+    node scripts/deploy-standalone.cjs
+    ```
+    This will deploy the contract and automatically update `src/constants/contract.ts` with the new address and ABI.
+
+### Frontend
+
+Build the application for production:
+
+```bash
+npm run build
 ```
 
-**Edit a file directly in GitHub**
+Upload the `dist` folder to Vercel, Netlify, or your preferred host.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Smart Contract
 
-**Use GitHub Codespaces**
+The `MemeNFT` contract is an ERC721URIStorage token.
+- **Current Address (Base Mainnet)**: `0xB96cBBED214C9AB06F3Cd25dA0638D4bcA6E5D40`
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+---
 
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/0044943f-a156-4ac1-82e5-9dfa565b264e) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+*Made with 💙 by Antigravity on Base*

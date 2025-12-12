@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas as FabricCanvas, FabricImage, IText, Rect, Path } from "fabric";
 import { Button } from "./ui/button";
-import { Download, Type, Image, Trash2, Undo2, Redo2, Square, ArrowRight, ImagePlus } from "lucide-react";
+import { Download, Type, Image, Trash2, Undo2, Redo2, Square, ArrowRight, ImagePlus, Monitor, Smartphone, RectangleHorizontal, Loader2, Coins, Share2 } from "lucide-react";
 import { toast } from "sonner";
 import { Slider } from "./ui/slider";
 import { Label } from "./ui/label";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { CONTRACT_ADDRESS, CONTRACT_ABI } from "../constants/contract";
+import { uploadToIPFS, uploadFileToIPFS } from "../utils/ipfs";
 
 interface MemeCanvasProps {
   imageUrl: string;
@@ -14,6 +17,8 @@ interface MemeCanvasProps {
   onFontSizeChange: (size: number) => void;
   setUploadedImage: (url: string | null) => void;
 }
+
+type AspectRatio = "16:9" | "4:3" | "9:16";
 
 export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFontSizeChange, setUploadedImage }: MemeCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -25,219 +30,275 @@ export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFon
   const isRedoing = useRef(false);
   const [textStrokeColor, setTextStrokeColor] = useState("#000000");
   const [textStrokeWidth, setTextStrokeWidth] = useState(2);
+  const [canvasColor, setCanvasColor] = useState("#ffffff");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
+  const [isMinting, setIsMinting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [mintHash, setMintHash] = useState<`0x${string}` | undefined>(undefined);
+
+  // Wagmi Hooks
+  const { address, isConnected } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+  const { isLoading: isConfirmingTx, isSuccess: isMintSuccess } = useWaitForTransactionReceipt({
+    hash: mintHash,
+  });
+
+  // Watch for Success
+  useEffect(() => {
+    if (isMintSuccess && mintHash) {
+      toast.success("Minted Successfully!", {
+        action: {
+          label: "View on Basescan",
+          onClick: () => window.open(`https://basescan.org/tx/${mintHash}`, '_blank'),
+        },
+        duration: 8000,
+      });
+      setIsMinting(false);
+      setMintHash(undefined);
+    }
+  }, [isMintSuccess, mintHash]);
+
+  // Guard to prevent double initialization issues
+  const canvasInstanceRef = useRef<FabricCanvas | null>(null);
 
   const saveState = (canvas: FabricCanvas) => {
     if (isRedoing.current) return;
-    const json = JSON.stringify(canvas.toJSON());
-    setHistory((prev) => {
-      const newHistory = prev.slice(0, historyStep + 1);
-      newHistory.push(json);
-      return newHistory;
-    });
-    setHistoryStep((prev) => prev + 1);
+    try {
+      const json = JSON.stringify(canvas.toJSON());
+      setHistory((prev) => {
+        const newHistory = prev.slice(0, historyStep + 1);
+        newHistory.push(json);
+        return newHistory;
+      });
+      setHistoryStep((prev) => prev + 1);
+    } catch (e) {
+      console.error("Failed to save state:", e);
+    }
   };
 
+  const getCanvasSize = (ratio: AspectRatio) => {
+    const padding = 32;
+    const maxWidth = Math.min(window.innerWidth - padding, 800);
+    // Base dimensions calculation
+    let width = maxWidth;
+    let height = width;
+
+    if (ratio === "16:9") {
+      height = Math.round(width * 9 / 16);
+    } else if (ratio === "4:3") {
+      height = Math.round(width * 3 / 4);
+    } else if (ratio === "9:16") {
+      height = Math.round(width * 16 / 9);
+      // Constrain height to viewport to prevent vertical overflow requiring scroll
+      const maxHeight = window.innerHeight * 0.75;
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = Math.round(height * 9 / 16); // Recalculate width to maintain ratio
+      }
+    }
+    return { width, height };
+  };
+
+  // Initialize Canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
-    // Calculate responsive canvas size with 16:9 aspect ratio
-    const getCanvasSize = () => {
-      const maxWidth = Math.min(window.innerWidth - 32, 800); // 16px padding on each side
-      const width = maxWidth;
-      const height = Math.round(width * 9 / 16); // 16:9 aspect ratio
-      return { width, height };
-    };
+    // Safety check: Dispose existing instance if any (React Strict Mode support)
+    if (canvasInstanceRef.current) {
+      try {
+        canvasInstanceRef.current.dispose();
+      } catch (e) { console.warn("Dispose error", e); }
+      canvasInstanceRef.current = null;
+    }
 
-    const { width, height } = getCanvasSize();
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width,
-      height,
-      backgroundColor: "#f5f5f5",
-    });
+    try {
+      const { width, height } = getCanvasSize(aspectRatio);
+      const canvas = new FabricCanvas(canvasRef.current, {
+        width,
+        height,
+        backgroundColor: canvasColor,
+        preserveObjectStacking: true, // Better layer management
+      });
 
-    setFabricCanvas(canvas);
+      canvasInstanceRef.current = canvas;
+      setFabricCanvas(canvas);
 
-    // Handle window resize
-    const handleResize = () => {
-      const { width, height } = getCanvasSize();
-      canvas.setDimensions({ width, height });
-      
-      // Re-scale the background image if it exists
-      if (imageRef.current) {
-        const scale = Math.min(
-          width / (imageRef.current.width || 1),
-          height / (imageRef.current.height || 1)
-        );
-        imageRef.current.scale(scale);
-        imageRef.current.set({
-          left: (width - (imageRef.current.width || 0) * scale) / 2,
-          top: (height - (imageRef.current.height || 0) * scale) / 2,
-        });
-      }
-      
-      canvas.renderAll();
-    };
+      const handleResize = () => {
+        if (!canvasInstanceRef.current) return;
+        const { width, height } = getCanvasSize(aspectRatio);
+        canvasInstanceRef.current.setDimensions({ width, height });
+        refreshImagePosition(canvasInstanceRef.current, width, height);
+      };
 
-    window.addEventListener("resize", handleResize);
+      window.addEventListener("resize", handleResize);
 
-    setFabricCanvas(canvas);
+      // Initial State Save
+      const initialState = JSON.stringify(canvas.toJSON());
+      setHistory([initialState]);
+      setHistoryStep(0);
 
-    // Save initial state
-    const initialState = JSON.stringify(canvas.toJSON());
-    setHistory([initialState]);
-    setHistoryStep(0);
+      // Event Listeners
+      const onStateChange = () => saveState(canvas);
+      canvas.on("object:added", onStateChange);
+      canvas.on("object:modified", onStateChange);
+      canvas.on("object:removed", onStateChange);
 
-    // Track changes for undo/redo
-    canvas.on("object:added", () => saveState(canvas));
-    canvas.on("object:modified", () => saveState(canvas));
-    canvas.on("object:removed", () => saveState(canvas));
-
-    // Keyboard shortcuts
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Delete
-      if (e.key === "Delete" || e.key === "Backspace") {
-        const activeObject = canvas.getActiveObject();
-        // Don't delete if user is editing text
-        if (activeObject instanceof IText && activeObject.isEditing) {
-          return;
+      return () => {
+        window.removeEventListener("resize", handleResize);
+        // Cleanup
+        if (canvasInstanceRef.current) {
+          canvasInstanceRef.current.dispose();
+          canvasInstanceRef.current = null;
         }
+        setFabricCanvas(null);
+      };
+    } catch (error) {
+      console.error("Error initializing fabric canvas:", error);
+      toast.error("Failed to load canvas. Please refresh.");
+    }
+  }, []); // Run ONCE on mount. resizing and ratio changes handled via refs/effects interaction or manual updates.
+
+  // Helper to maintain image position on resize/ratio change
+  const refreshImagePosition = (canvas: FabricCanvas, w: number, h: number) => {
+    if (imageRef.current) {
+      const scale = Math.min(
+        w / (imageRef.current.width || 1),
+        h / (imageRef.current.height || 1)
+      );
+      imageRef.current.scale(scale);
+      imageRef.current.set({
+        left: (w - (imageRef.current.width || 0) * scale) / 2,
+        top: (h - (imageRef.current.height || 0) * scale) / 2,
+      });
+      canvas.sendObjectToBack(imageRef.current);
+      canvas.renderAll();
+    }
+  };
+
+  // Handle Aspect Ratio & Color Updates
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    // Updates
+    const { width, height } = getCanvasSize(aspectRatio);
+    fabricCanvas.setDimensions({ width, height });
+    fabricCanvas.backgroundColor = canvasColor;
+
+    refreshImagePosition(fabricCanvas, width, height);
+    fabricCanvas.renderAll();
+  }, [aspectRatio, canvasColor, fabricCanvas]);
+
+  // Load Image
+  useEffect(() => {
+    if (!fabricCanvas || !imageUrl) return;
+
+    FabricImage.fromURL(imageUrl).then((img) => {
+      const { width, height } = getCanvasSize(aspectRatio); // Use current aspect ratio
+
+      const scale = Math.min(width / (img.width || 1), height / (img.height || 1));
+      img.scale(scale);
+      img.set({
+        left: (width - (img.width || 0) * scale) / 2,
+        top: (height - (img.height || 0) * scale) / 2,
+        selectable: true,
+      });
+
+      imageRef.current = img;
+      fabricCanvas.clear(); // Clear previous content
+      fabricCanvas.backgroundColor = canvasColor; // Restore color
+      fabricCanvas.add(img);
+      fabricCanvas.sendObjectToBack(img);
+      fabricCanvas.renderAll();
+
+      // Reset History on new image load
+      const state = JSON.stringify(fabricCanvas.toJSON());
+      setHistory([state]);
+      setHistoryStep(0);
+    }).catch(err => {
+      console.error("Failed to load image:", err);
+      toast.error("Failed to load image on canvas.");
+    });
+  }, [fabricCanvas, imageUrl]); // Removed aspectRatio dependency to prevent reload loop
+
+  // Keyboard Shortcuts (Outside useEffect to avoid stale closures if using state)
+  useEffect(() => {
+    if (!fabricCanvas) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const activeObject = fabricCanvas.getActiveObject();
+        if (activeObject instanceof IText && activeObject.isEditing) return;
         if (activeObject && activeObject !== imageRef.current) {
-          canvas.remove(activeObject);
-          canvas.renderAll();
+          fabricCanvas.remove(activeObject);
+          fabricCanvas.renderAll();
           toast.success("Object deleted");
         }
       }
-      // Undo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
         handleUndo();
       }
-      // Redo
       if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
         e.preventDefault();
         handleRedo();
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("resize", handleResize);
-      canvas.dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!fabricCanvas || !imageUrl) return;
-
-    FabricImage.fromURL(imageUrl).then((img) => {
-      const canvasWidth = fabricCanvas.width || 800;
-      const canvasHeight = fabricCanvas.height || 450;
-
-      const scale = Math.min(
-        canvasWidth / (img.width || 1),
-        canvasHeight / (img.height || 1)
-      );
-
-      img.scale(scale);
-      img.set({
-        left: (canvasWidth - (img.width || 0) * scale) / 2,
-        top: (canvasHeight - (img.height || 0) * scale) / 2,
-        selectable: true,
-      });
-
-      imageRef.current = img;
-      fabricCanvas.clear();
-      fabricCanvas.add(img);
-      fabricCanvas.renderAll();
-    });
-  }, [fabricCanvas, imageUrl]);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fabricCanvas, history, historyStep]);
 
   const addText = () => {
     if (!fabricCanvas) return;
-
     const text = new IText("Your Text Here", {
-      left: 100,
-      top: 100,
-      fontSize: fontSize,
-      fill: textColor,
-      fontFamily: "Arial, sans-serif",
-      fontWeight: "bold",
-      stroke: textStrokeColor,
-      strokeWidth: textStrokeWidth,
-      selectable: true,
-      editable: true,
+      left: 100, top: 100, fontSize, fill: textColor, fontFamily: "Arial, sans-serif", fontWeight: "bold", stroke: textStrokeColor, strokeWidth: textStrokeWidth, selectable: true, editable: true,
     });
-
     fabricCanvas.add(text);
     fabricCanvas.setActiveObject(text);
     fabricCanvas.renderAll();
-    toast.success("Text added! Drag to reposition, double-click to edit");
+    toast.success("Text added!");
   };
 
   const addRectangle = () => {
     if (!fabricCanvas) return;
     const rect = new Rect({
-      left: 150,
-      top: 150,
-      fill: textColor,
-      width: 150,
-      height: 100,
-      stroke: textStrokeColor,
-      strokeWidth: 2,
-      selectable: true,
+      left: 150, top: 150, fill: textColor, width: 150, height: 100, stroke: textStrokeColor, strokeWidth: 2, selectable: true,
     });
     fabricCanvas.add(rect);
     fabricCanvas.setActiveObject(rect);
     fabricCanvas.renderAll();
-    toast.success("Rectangle added! Drag corners to resize");
+    toast.success("Rectangle added!");
   };
 
   const addArrow = () => {
     if (!fabricCanvas) return;
-    // Create arrow using Path
     const arrowPath = new Path("M 0 0 L 100 0 L 90 -10 M 100 0 L 90 10", {
-      left: 150,
-      top: 150,
-      stroke: textColor,
-      strokeWidth: 3,
-      fill: "",
-      strokeLineCap: "round",
-      selectable: true,
+      left: 150, top: 150, stroke: textColor, strokeWidth: 3, fill: "", strokeLineCap: "round", selectable: true,
     });
     fabricCanvas.add(arrowPath);
     fabricCanvas.setActiveObject(arrowPath);
     fabricCanvas.renderAll();
-    toast.success("Arrow added! Drag to move and resize");
+    toast.success("Arrow added!");
   };
 
   useEffect(() => {
     if (!fabricCanvas) return;
-
     const activeObject = fabricCanvas.getActiveObject();
     if (activeObject && activeObject instanceof IText) {
-      activeObject.set({
-        fill: textColor,
-        fontSize: fontSize,
-      });
+      activeObject.set({ fill: textColor, fontSize, stroke: textStrokeColor, strokeWidth: textStrokeWidth }); // Added stroke sync
       fabricCanvas.renderAll();
     }
-  }, [textColor, fontSize, fabricCanvas]);
+  }, [textColor, fontSize, textStrokeColor, textStrokeWidth, fabricCanvas]);
 
   const handleUndo = () => {
     if (!fabricCanvas || historyStep <= 0) return;
     const historyState = history[historyStep - 1];
-    if (!historyState) return;
-    
     isRedoing.current = true;
-    
     fabricCanvas.loadFromJSON(JSON.parse(historyState)).then(() => {
-      // Update the image reference to the first object (background image)
       const objects = fabricCanvas.getObjects();
-      if (objects.length > 0 && objects[0] instanceof FabricImage) {
-        imageRef.current = objects[0];
-      }
+      // Re-find image ref
+      const img = objects.find(obj => obj instanceof FabricImage);
+      if (img) imageRef.current = img as FabricImage;
+
+      fabricCanvas.backgroundColor = canvasColor;
       fabricCanvas.renderAll();
       setHistoryStep(historyStep - 1);
       isRedoing.current = false;
@@ -248,16 +309,13 @@ export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFon
   const handleRedo = () => {
     if (!fabricCanvas || historyStep >= history.length - 1) return;
     const historyState = history[historyStep + 1];
-    if (!historyState) return;
-    
     isRedoing.current = true;
-    
     fabricCanvas.loadFromJSON(JSON.parse(historyState)).then(() => {
-      // Update the image reference to the first object (background image)
       const objects = fabricCanvas.getObjects();
-      if (objects.length > 0 && objects[0] instanceof FabricImage) {
-        imageRef.current = objects[0];
-      }
+      const img = objects.find(obj => obj instanceof FabricImage);
+      if (img) imageRef.current = img as FabricImage;
+
+      fabricCanvas.backgroundColor = canvasColor;
       fabricCanvas.renderAll();
       setHistoryStep(historyStep + 1);
       isRedoing.current = false;
@@ -272,7 +330,7 @@ export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFon
       fabricCanvas.remove(activeObject);
       fabricCanvas.renderAll();
       toast.success("Object deleted");
-    } else if (activeObject === imageRef.current) {
+    } else {
       toast.error("Cannot delete background image");
     }
   };
@@ -290,14 +348,11 @@ export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFon
       const imgUrl = event.target?.result as string;
       FabricImage.fromURL(imgUrl).then((img) => {
         img.scale(0.3);
-        img.set({
-          left: 100,
-          top: 100,
-          selectable: true,
-        });
+        img.set({ left: 100, top: 100, selectable: true });
         fabricCanvas.add(img);
+        fabricCanvas.setActiveObject(img);
         fabricCanvas.renderAll();
-        toast.success("Image added! Drag to move, corners to resize");
+        toast.success("Image added!");
       });
     };
     reader.readAsDataURL(file);
@@ -306,157 +361,275 @@ export const MemeCanvas = ({ imageUrl, textColor, fontSize, onColorChange, onFon
 
   const downloadMeme = () => {
     if (!fabricCanvas) return;
-
     fabricCanvas.discardActiveObject();
     fabricCanvas.renderAll();
-
-    const dataURL = fabricCanvas.toDataURL({
-      format: "png",
-      quality: 1,
-      multiplier: 1,
-    });
-
+    const dataURL = fabricCanvas.toDataURL({ format: "png", quality: 1, multiplier: 3 }); // High quality 3x
     const link = document.createElement("a");
-    link.download = "meme.png";
+    link.download = `meme-${Date.now()}.png`;
     link.href = dataURL;
     link.click();
+    toast.success("Downloading meme...");
+  };
 
-    toast.success("Meme downloaded successfully!");
+  const generateAndUploadMeme = async () => {
+    if (!fabricCanvas) return null;
+    fabricCanvas.discardActiveObject();
+    fabricCanvas.renderAll();
+    const dataURL = fabricCanvas.toDataURL({ format: "png", quality: 1, multiplier: 2 });
+    const res = await fetch(dataURL);
+    const blob = await res.blob();
+    const file = new File([blob], `meme-share-${Date.now()}.png`, { type: "image/png" });
+    return await uploadFileToIPFS(file);
+  };
+
+  const handleShare = async () => {
+    setIsSharing(true);
+    toast.info("Creating shareable link...");
+    try {
+      const cid = await generateAndUploadMeme();
+      if (!cid) throw new Error("Failed to upload");
+
+      const shareUrl = `${window.location.origin}/share?id=${cid}`;
+      await navigator.clipboard.writeText(shareUrl);
+
+      toast.success("Link copied to clipboard!", {
+        description: "Share this link with your friends!",
+        duration: 5000,
+      });
+    } catch (e) {
+      console.error("Share failed", e);
+      toast.error("Failed to create share link");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleBaseShare = async () => {
+    setIsSharing(true);
+    toast.info("Preparing for Base Feed...");
+    try {
+      const cid = await generateAndUploadMeme();
+      if (!cid) throw new Error("Failed to upload");
+
+      const shareUrl = `${window.location.origin}/share?id=${cid}`;
+      const text = encodeURIComponent("Make it Based 🔵");
+      const url = encodeURIComponent(shareUrl);
+      const warpcastUrl = `https://warpcast.com/~/compose?text=${text}&embeds[]=${url}`;
+
+      window.open(warpcastUrl, '_blank');
+      toast.success("Opened in Warpcast!");
+    } catch (e) {
+      console.error("Base Share failed", e);
+      toast.error("Failed to share to Base Feed");
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const handleMint = async () => {
+    if (!fabricCanvas) return;
+    if (!isConnected || !address) {
+      toast.error("Please connect your wallet first!");
+      return;
+    }
+
+    setIsMinting(true);
+    toast.info("Preparing your meme for the blockchain...");
+
+    try {
+      // 1. Prepare Image
+      fabricCanvas.discardActiveObject();
+      fabricCanvas.renderAll();
+
+      const dataURL = fabricCanvas.toDataURL({ format: "png", quality: 1, multiplier: 2 });
+      const res = await fetch(dataURL);
+      const blob = await res.blob();
+      const file = new File([blob], `meme-${Date.now()}.png`, { type: "image/png" });
+
+      // 2. Upload to IPFS via Pinata
+      toast.info("Uploading to permanent storage...");
+      const metadataUri = await uploadToIPFS(file);
+      console.log("Metadata URI:", metadataUri);
+
+      // 3. Mint NFT
+      toast.info("Please confirm transaction in your wallet...");
+      const hash = await writeContractAsync({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        abi: CONTRACT_ABI,
+        functionName: "mint",
+        args: [address, metadataUri],
+      });
+
+      console.log("Tx Hash:", hash);
+      setMintHash(hash);
+      toast.info("Transaction sent! Waiting for confirmation...");
+      // setIsMinting stays true until isMintSuccess effect triggers
+
+    } catch (error) {
+      console.error("Minting failed:", error);
+      toast.error("Minting failed. See console for details.");
+      setIsMinting(false);
+    }
   };
 
   return (
-    <div className="space-y-3">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        onChange={handleImageUpload}
-        className="hidden"
-      />
-      
-      {/* First Bar: Add image, new image, download */}
+    <div className="space-y-4 max-w-4xl mx-auto animate-in fade-in duration-500 pb-20">
+      <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+
+      {/* Top Controls: Image & Download */}
       <div className="flex justify-center gap-2 flex-wrap">
-        <Button onClick={addImage} variant="outline" className="gap-2 flex-1 sm:flex-initial">
-          <Image className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Image</span>
+        <Button onClick={addImage} variant="outline" className="gap-2">
+          <Image className="w-4 h-4" /> Add Sticker
         </Button>
-        <Button onClick={() => setUploadedImage(null)} variant="outline" className="gap-2 flex-1 sm:flex-initial">
-          <ImagePlus className="w-4 h-4" />
-          <span className="hidden sm:inline">New Image</span>
+        <Button onClick={() => setUploadedImage(null)} variant="outline" className="gap-2">
+          <ImagePlus className="w-4 h-4" /> Upload New
         </Button>
-        <Button onClick={downloadMeme} variant="secondary" className="gap-2 flex-1 sm:flex-initial">
-          <Download className="w-4 h-4" />
-          <span className="hidden sm:inline">Download</span>
+        <Button onClick={downloadMeme} variant="default" className="gap-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:shadow-lg transition-all border-0">
+          <Download className="w-4 h-4" /> Download
         </Button>
-      </div>
-
-      {/* Second Bar: Add text, rectangle, arrow */}
-      <div className="flex justify-center gap-2 flex-wrap">
-        <Button onClick={addText} className="gap-2 flex-1 sm:flex-initial">
-          <Type className="w-4 h-4" />
-          <span className="hidden sm:inline">Add Text</span>
+        <Button onClick={handleShare} disabled={isSharing} variant="default" className="gap-2 bg-gradient-to-r from-purple-600 to-pink-500 hover:shadow-lg transition-all border-0">
+          {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
+          Share Link
         </Button>
-        <Button onClick={addRectangle} variant="outline" className="gap-2 flex-1 sm:flex-initial">
-          <Square className="w-4 h-4" />
-          <span className="hidden sm:inline">Rectangle</span>
-        </Button>
-        <Button onClick={addArrow} variant="outline" className="gap-2 flex-1 sm:flex-initial">
-          <ArrowRight className="w-4 h-4" />
-          <span className="hidden sm:inline">Arrow</span>
+        <Button onClick={handleBaseShare} disabled={isSharing} variant="default" className="gap-2 bg-blue-500 hover:bg-blue-600 hover:shadow-lg transition-all border-0 text-white">
+          {isSharing ? <Loader2 className="w-4 h-4 animate-spin" /> : <div className="w-4 h-4 rounded-full bg-white/20 flex items-center justify-center">🔵</div>}
+          Share to Base
         </Button>
       </div>
 
-      {/* Third Bar: Text color, text outline, delete, undo, redo */}
-      <div className="flex justify-center gap-2 items-center flex-wrap bg-muted/50 p-3 rounded-lg">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="text-color" className="text-xs font-medium whitespace-nowrap">
-            Text Color
-          </Label>
-          <input
-            id="text-color"
-            type="color"
-            value={textColor}
-            onChange={(e) => onColorChange(e.target.value)}
-            className="h-9 w-14 rounded border border-border cursor-pointer"
-          />
+      {/* Editor Toolbar */}
+      <div className="flex flex-col gap-3 bg-slate-900/60 backdrop-blur-md border border-white/10 p-4 rounded-xl shadow-2xl ring-1 ring-white/5">
+
+        {/* Row 1: Add Items & History */}
+        <div className="flex justify-between items-center flex-wrap gap-2">
+          <div className="flex gap-2">
+            <Button onClick={addText} size="sm" variant="secondary" className="gap-2 bg-slate-800 text-white hover:bg-slate-700 border-white/10">
+              <Type className="w-4 h-4" /> Text
+            </Button>
+            <Button onClick={addRectangle} size="icon" variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/10" title="Rectangle">
+              <Square className="w-4 h-4" />
+            </Button>
+            <Button onClick={addArrow} size="icon" variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/10" title="Arrow">
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="h-8 w-px bg-white/10 mx-1" />
+            <Button onClick={handleUndo} size="icon" variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/10" disabled={historyStep <= 0}>
+              <Undo2 className="w-4 h-4" />
+            </Button>
+            <Button onClick={handleRedo} size="icon" variant="ghost" className="text-slate-400 hover:text-white hover:bg-white/10" disabled={historyStep >= history.length - 1}>
+              <Redo2 className="w-4 h-4" />
+            </Button>
+            <Button onClick={deleteSelected} size="icon" variant="destructive" className="bg-red-500/80 hover:bg-red-600/90 text-white">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Label htmlFor="text-stroke-color" className="text-xs font-medium whitespace-nowrap">
-            Outline
-          </Label>
-          <input
-            id="text-stroke-color"
-            type="color"
-            value={textStrokeColor}
-            onChange={(e) => setTextStrokeColor(e.target.value)}
-            className="h-9 w-14 rounded border border-border cursor-pointer"
-          />
+
+        {/* Row 2: Canvas Settings (Color & Ratio) */}
+        <div className="flex justify-center items-center gap-4 flex-wrap bg-black/20 p-2 rounded-lg border border-white/5">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="canvas-color" className="text-xs font-semibold text-slate-300">CANVAS</Label>
+            <div className="relative overflow-hidden w-8 h-8 rounded-full border-2 border-white/20 hover:scale-105 transition-transform">
+              <input
+                id="canvas-color"
+                type="color"
+                value={canvasColor}
+                onChange={(e) => setCanvasColor(e.target.value)}
+                className="absolute -top-4 -left-4 w-16 h-16 cursor-pointer p-0 border-0"
+                title="Canvas Background Color"
+              />
+            </div>
+          </div>
+
+          <div className="h-6 w-px bg-white/10" />
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant={aspectRatio === "16:9" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setAspectRatio("16:9")}
+              className={`px-3 h-8 gap-2 text-xs transition-colors ${aspectRatio === "16:9" ? "bg-blue-600/80 text-white hover:bg-blue-600" : "text-slate-400 hover:text-white hover:bg-white/10"}`}
+            >
+              <Monitor className="w-3 h-3" /> 16:9
+            </Button>
+            <Button
+              variant={aspectRatio === "4:3" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setAspectRatio("4:3")}
+              className={`px-3 h-8 gap-2 text-xs transition-colors ${aspectRatio === "4:3" ? "bg-blue-600/80 text-white hover:bg-blue-600" : "text-slate-400 hover:text-white hover:bg-white/10"}`}
+            >
+              <RectangleHorizontal className="w-3 h-3" /> 4:3
+            </Button>
+            <Button
+              variant={aspectRatio === "9:16" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setAspectRatio("9:16")}
+              className={`px-3 h-8 gap-2 text-xs transition-colors ${aspectRatio === "9:16" ? "bg-blue-600/80 text-white hover:bg-blue-600" : "text-slate-400 hover:text-white hover:bg-white/10"}`}
+            >
+              <Smartphone className="w-3 h-3" /> 9:16
+            </Button>
+          </div>
         </div>
-        <Button onClick={deleteSelected} variant="destructive" size="icon" className="h-9 w-9">
-          <Trash2 className="w-4 h-4" />
-        </Button>
-        <Button 
-          onClick={handleUndo} 
-          variant="outline" 
-          size="icon"
-          disabled={historyStep <= 0}
-          className="h-9 w-9"
-        >
-          <Undo2 className="w-4 h-4" />
-        </Button>
-        <Button 
-          onClick={handleRedo} 
-          variant="outline" 
-          size="icon"
-          disabled={historyStep >= history.length - 1}
-          className="h-9 w-9"
-        >
-          <Redo2 className="w-4 h-4" />
-        </Button>
+
+        {/* Row 3: Text Styles */}
+        <div className="flex justify-center items-center gap-4 flex-wrap text-sm pt-1">
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-slate-300">TEXT</Label>
+            <div className="relative overflow-hidden w-6 h-6 rounded border border-white/20">
+              <input type="color" value={textColor} onChange={(e) => onColorChange(e.target.value)} className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer p-0 border-0" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-slate-300">OUTLINE</Label>
+            <div className="relative overflow-hidden w-6 h-6 rounded border border-white/20">
+              <input type="color" value={textStrokeColor} onChange={(e) => setTextStrokeColor(e.target.value)} className="absolute -top-2 -left-2 w-10 h-10 cursor-pointer p-0 border-0" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 min-w-[120px]">
+            <span className="text-xs text-slate-300">SIZE</span>
+            <Slider value={[fontSize]} onValueChange={(val) => onFontSizeChange(val[0])} min={12} max={120} step={1} className="w-28" />
+          </div>
+        </div>
       </div>
 
-      {/* Fourth Bar: Font size, outline width */}
-      <div className="flex justify-center gap-4 items-center bg-muted/50 p-3 rounded-lg flex-wrap">
-        <div className="flex items-center gap-2 flex-1 min-w-[140px] max-w-xs">
-          <Label htmlFor="font-size" className="text-xs font-medium whitespace-nowrap">
-            Font Size
-          </Label>
-          <Slider
-            id="font-size"
-            value={[fontSize]}
-            onValueChange={(value) => onFontSizeChange(value[0])}
-            min={12}
-            max={120}
-            step={1}
-            className="flex-1"
-          />
-          <span className="text-xs text-muted-foreground w-8">{fontSize}</span>
-        </div>
-        <div className="flex items-center gap-2 flex-1 min-w-[140px] max-w-xs">
-          <Label htmlFor="text-stroke-width" className="text-xs font-medium whitespace-nowrap">
-            Outline
-          </Label>
-          <Slider
-            id="text-stroke-width"
-            value={[textStrokeWidth]}
-            onValueChange={(value) => setTextStrokeWidth(value[0])}
-            min={0}
-            max={10}
-            step={1}
-            className="flex-1"
-          />
-          <span className="text-xs text-muted-foreground w-8">{textStrokeWidth}</span>
-        </div>
-      </div>
-
-      <div className="flex justify-center w-full">
-        <div className="border border-border rounded-lg overflow-hidden shadow-lg bg-card w-full max-w-[800px]">
+      <div className="flex justify-center w-full px-2 sm:px-0">
+        <div className="border border-white/10 rounded-xl overflow-hidden shadow-2xl bg-slate-950/50 w-full max-w-[800px] transition-all duration-500 ease-in-out relative group">
           <canvas ref={canvasRef} className="w-full h-auto" />
         </div>
       </div>
 
-      <p className="text-center text-sm text-muted-foreground">
-        Ctrl+Z to undo • Ctrl+Y to redo • Delete to remove • Drag to move • Double-click text to edit
+      {/* Mint Button Area */}
+      <div className="flex justify-center pt-2">
+        <Button
+          onClick={handleMint}
+          disabled={isMinting}
+          className="w-full max-w-sm h-12 text-lg font-bold bg-gradient-to-r from-blue-700 via-blue-600 to-blue-700 hover:from-blue-600 hover:to-blue-600 border border-blue-400/30 shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] transition-all transform hover:-translate-y-0.5"
+        >
+          {isMinting ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Preparing...
+            </>
+          ) : (
+            <>
+              {isConfirmingTx ? "Confirming..." : (
+                <>
+                  <Coins className="w-5 h-5 mr-2" />
+                  Mint on Base
+                </>
+              )}
+            </>
+          )}
+        </Button>
+      </div>
+
+      <p className="text-center text-xs text-slate-500 animate-pulse">
+        Double-click text to edit • Drag to move
       </p>
     </div>
   );
