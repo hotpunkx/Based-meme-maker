@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "vite preview"
+    "start": "vite preview",
+    "check-env": "node scripts/check-env.js"
   },
   "dependencies": {
     "@farcaster/frame-sdk": "^0.1.12",
